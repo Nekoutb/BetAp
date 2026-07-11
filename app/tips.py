@@ -4,7 +4,7 @@ from time import monotonic
 from zoneinfo import ZoneInfo
 import numpy as np
 from scipy.stats import poisson
-from .learning import record_forecasts
+from .learning import record_forecasts,pending_for_reconciliation,resolve_forecast
 from .analysis import analyse
 from .footystats import FootyStatsClient
 from .schemas import AnalysisRequest
@@ -45,7 +45,9 @@ def _forecast_market(name, expected, line, empirical=None, seed=42):
     direction="over" if sum(x["probability"] for x in models)/3>=.5 else "under"
     narrative=f"The three models lean {direction} {line} with an expected count of {expected:.2f}. "
     narrative+=("Model agreement is strong, supporting the direction." if spread<.12 else "Model disagreement is material, so this market should be treated cautiously.")
-    return {"market":name,"status":"available","line":line,"expected":round(expected,2),"models":models,"narrative":narrative,"disagreement":round(spread,4)}
+    mean=sum(x["probability"] for x in models)/3
+    recommendation=(f"Consider Over {line}" if mean>=.62 and spread<.18 else f"Consider Under {line}" if mean<=.38 and spread<.18 else "Pass — no robust consensus")
+    return {"market":name,"status":"available","line":line,"expected":round(expected,2),"models":models,"narrative":narrative,"recommendation":recommendation,"disagreement":round(spread,4)}
 
 def _market_breakdown(m,r):
     goals=r.model_probabilities
@@ -54,7 +56,8 @@ def _market_breakdown(m,r):
         p=goals[model]["over25"]; goal_models.append({"model":label,"probability":p,"outcome":"Over 2.5" if p>=.5 else "Under 2.5"})
     spread=max(x["probability"] for x in goal_models)-min(x["probability"] for x in goal_models)
     goal_mean=sum(x["probability"] for x in goal_models)/3
-    markets=[{"market":"Goals","status":"available","line":2.5,"expected":round(r.expected_home_goals+r.expected_away_goals,2),"models":goal_models,"disagreement":round(spread,4),"narrative":f"The models average {goal_mean*100:.1f}% for Over 2.5 goals. "+("Their agreement supports the signal." if spread<.12 else "Their disagreement challenges the signal; reduce confidence or pass.")}]
+    goal_rec="Consider Over 2.5" if goal_mean>=.62 and spread<.18 else "Consider Under 2.5" if goal_mean<=.38 and spread<.18 else "Pass — no robust consensus"
+    markets=[{"market":"Goals","status":"available","line":2.5,"expected":round(r.expected_home_goals+r.expected_away_goals,2),"models":goal_models,"disagreement":round(spread,4),"recommendation":goal_rec,"narrative":f"The models average {goal_mean*100:.1f}% for Over 2.5 goals. "+("Their agreement supports the signal." if spread<.12 else "Their disagreement challenges the signal; reduce confidence or pass.")}]
     corners=_num(m,"corners_potential",-1)
     if corners>=0:
         empirical=_rate(m,"corners_o85_potential",.5) if m.get("corners_o85_potential") not in (None,-1) else None
@@ -69,11 +72,20 @@ async def next_48h_tips(client, force=False):
     global _cache
     if not force and _cache and monotonic()-_cache[0]<900:return _cache[1]
     async with _lock:
+        await reconcile_completed(client)
         now=datetime.now(timezone.utc); end=now+timedelta(hours=48); london=ZoneInfo("Europe/London")
         dates=sorted({(now+timedelta(days=i)).astimezone(london).date().isoformat() for i in range(3)})
         batches=await asyncio.gather(*(client.matches_by_date(x) for x in dates))
         fixtures={int(m["id"]):m for b in batches for m in b if m.get("id")}
-        eligible=[m for m in fixtures.values() if m.get("status")=="incomplete" and now<=datetime.fromtimestamp(int(m.get("date_unix",0)),timezone.utc)<=end]
+        eligible=[m for m in fixtures.values() if m.get("status")=="incomplete" and now-timedelta(hours=3)<=datetime.fromtimestamp(int(m.get("date_unix",0)),timezone.utc)<=end]
         tips=[t for m in eligible if (t:=_analyse_fixture(m))]
         tips.sort(key=lambda t:(t["best_tip"]["verdict"]!="VALUE",-t["best_tip"]["expected_value"]))
         payload={"generated_at":now.isoformat(),"window_end":end.isoformat(),"fixtures_found":len(eligible),"fixtures_analysed":len(tips),"tips":tips}; record_forecasts(tips,now.isoformat()); _cache=(monotonic(),payload); return payload
+
+async def reconcile_completed(client):
+    for match_id,_ in pending_for_reconciliation():
+        try:
+            payload=await client.match(match_id); match=payload.get("data",payload); match=match[0] if isinstance(match,list) and match else match
+            if isinstance(match,dict) and match.get("status")=="complete":resolve_forecast(match_id,match)
+        except Exception:
+            continue

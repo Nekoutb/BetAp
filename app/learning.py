@@ -21,4 +21,24 @@ def learning_summary():
         total=db.execute("SELECT COUNT(*) FROM forecasts").fetchone()[0]
         resolved=db.execute("SELECT COUNT(*) FROM forecasts WHERE status='resolved'").fetchone()[0]
         recent=db.execute("SELECT match_id,kickoff,home_team,away_team,status FROM forecasts ORDER BY kickoff DESC LIMIT 10").fetchall()
-    return {"tracked_predictions":total,"resolved_predictions":resolved,"pending_predictions":total-resolved,"method":"Forecasts are stored before kickoff. Completed results will be compared using Brier error to challenge and recalibrate model weights.","recent":[{"match_id":r[0],"kickoff":r[1],"home_team":r[2],"away_team":r[3],"status":r[4]} for r in recent]}
+        rows=db.execute("SELECT result_json FROM forecasts WHERE status='resolved'").fetchall()
+    scores={}
+    for row in rows:
+        for item in json.loads(row[0] or "{}").get("scores",[]): scores.setdefault(item["model"],[]).append(item["brier"])
+    calibration=[{"model":m,"samples":len(v),"brier":round(sum(v)/len(v),4),"assessment":"strong" if sum(v)/len(v)<.18 else "challenge" if sum(v)/len(v)>.25 else "monitor"} for m,v in scores.items()]
+    return {"tracked_predictions":total,"resolved_predictions":resolved,"pending_predictions":total-resolved,"calibration":calibration,"method":"Lower Brier error is better. Models above 0.25 are challenged and should receive less trust.","recent":[{"match_id":r[0],"kickoff":r[1],"home_team":r[2],"away_team":r[3],"status":r[4]} for r in recent]}
+
+def pending_for_reconciliation(limit=12):
+    with _db() as db:return db.execute("SELECT match_id,forecast_json FROM forecasts WHERE status='pending' AND datetime(kickoff)<datetime('now','-90 minutes') LIMIT ?",(limit,)).fetchall()
+
+def resolve_forecast(match_id,match):
+    with _db() as db:
+        row=db.execute("SELECT forecast_json FROM forecasts WHERE match_id=?",(match_id,)).fetchone()
+        if not row:return
+        markets=json.loads(row[0]); scores=[]
+        actuals={"Goals":float(match.get("totalGoalCount",0))>2.5,"Corners":float(match.get("totalCornerCount",0))>8.5,"1H corners":float(match.get("corner_fh_count",0))>4.5,"2H corners":float(match.get("corner_2h_count",0))>4.5}
+        for market in markets:
+            if market.get("status")!="available" or market["market"] not in actuals:continue
+            actual=1.0 if actuals[market["market"]] else 0.0
+            for model in market["models"]:scores.append({"market":market["market"],"model":model["model"],"probability":model["probability"],"actual":actual,"brier":round((model["probability"]-actual)**2,4)})
+        db.execute("UPDATE forecasts SET status='resolved',result_json=? WHERE match_id=?",(json.dumps({"score":f'{match.get("homeGoalCount",0)}-{match.get("awayGoalCount",0)}',"scores":scores}),match_id))
