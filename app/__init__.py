@@ -1,0 +1,1 @@
+"""BetAp application package."""

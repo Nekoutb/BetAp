@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BetAp — Match intelligence</title><link rel="stylesheet" href="/static/styles.css"></head>
+<body><main class="shell">
+  <header><div class="brand"><span class="mark">B</span><span>BetAp</span></div><span class="status"><i></i> Analysis engine online</span></header>
+  <section class="hero"><p class="eyebrow">STATISTICAL MATCH INTELLIGENCE</p><h1>Find the signal.<br><span>Respect the uncertainty.</span></h1><p>Three independent models turn team metrics and market odds into probability, fair price, and disciplined exposure.</p></section>
+  <section class="workspace">
+    <form id="analysis-form"><div class="form-head"><div><p class="eyebrow">NEW ANALYSIS</p><h2>Match inputs</h2></div><button type="button" id="demo">Load demo</button></div>
+      <div class="teams"><fieldset><legend>Home team</legend><label>Name<input name="home_name" required value="Arsenal"></label><div class="grid"><label>Goals for<input type="number" step=".01" name="home_gf" value="2.1" required></label><label>Goals against<input type="number" step=".01" name="home_ga" value="0.9" required></label><label>Shots on target<input type="number" step=".01" name="home_sot" value="6.2"></label><label>Win rate<input type="number" step=".01" max="1" name="home_wr" value="0.68"></label></div></fieldset>
+      <div class="versus">VS</div><fieldset><legend>Away team</legend><label>Name<input name="away_name" required value="Chelsea"></label><div class="grid"><label>Goals for<input type="number" step=".01" name="away_gf" value="1.65" required></label><label>Goals against<input type="number" step=".01" name="away_ga" value="1.25" required></label><label>Shots on target<input type="number" step=".01" name="away_sot" value="5.1"></label><label>Win rate<input type="number" step=".01" max="1" name="away_wr" value="0.52"></label></div></fieldset></div>
+      <fieldset class="odds"><legend>Decimal odds</legend><div class="grid five"><label>Home<input type="number" step=".01" name="odd_h" value="1.85" required></label><label>Draw<input type="number" step=".01" name="odd_d" value="3.8" required></label><label>Away<input type="number" step=".01" name="odd_a" value="4.4" required></label><label>Over 2.5<input type="number" step=".01" name="odd_o" value="1.9"></label><label>BTTS<input type="number" step=".01" name="odd_b" value="1.8"></label></div></fieldset>
+      <button class="primary" type="submit"><span>Run three-model analysis</span><b>→</b></button>
+    </form>
+    <aside id="results"><div class="empty"><span>∿</span><h3>Ready to analyse</h3><p>Enter current team metrics and bookmaker prices. Results will appear here.</p></div></aside>
+  </section>
+  <footer>Model output is informational and never guarantees a return. Bet only what you can afford to lose.</footer>
+</main><script src="/static/app.js"></script></body></html>
