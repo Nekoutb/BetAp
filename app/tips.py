@@ -4,6 +4,7 @@ from time import monotonic
 from zoneinfo import ZoneInfo
 import numpy as np
 from scipy.stats import poisson
+from .learning import record_forecasts
 from .analysis import analyse
 from .footystats import FootyStatsClient
 from .schemas import AnalysisRequest
@@ -40,14 +41,20 @@ def _forecast_market(name, expected, line, empirical=None, seed=42):
     models=[]
     for model,p in (("Poisson",poisson_p),("Form / empirical",form_p),("Stochastic simulation",simulation_p)):
         models.append({"model":model,"probability":round(p,4),"outcome":f"Over {line}" if p>=.5 else f"Under {line}"})
-    return {"market":name,"status":"available","line":line,"expected":round(expected,2),"models":models}
+    spread=max(x["probability"] for x in models)-min(x["probability"] for x in models)
+    direction="over" if sum(x["probability"] for x in models)/3>=.5 else "under"
+    narrative=f"The three models lean {direction} {line} with an expected count of {expected:.2f}. "
+    narrative+=("Model agreement is strong, supporting the direction." if spread<.12 else "Model disagreement is material, so this market should be treated cautiously.")
+    return {"market":name,"status":"available","line":line,"expected":round(expected,2),"models":models,"narrative":narrative,"disagreement":round(spread,4)}
 
 def _market_breakdown(m,r):
     goals=r.model_probabilities
     goal_models=[]
     for model,label in (("poisson","Poisson"),("form_regression","Form / empirical"),("stochastic_simulation","Stochastic simulation")):
         p=goals[model]["over25"]; goal_models.append({"model":label,"probability":p,"outcome":"Over 2.5" if p>=.5 else "Under 2.5"})
-    markets=[{"market":"Goals","status":"available","line":2.5,"expected":round(r.expected_home_goals+r.expected_away_goals,2),"models":goal_models}]
+    spread=max(x["probability"] for x in goal_models)-min(x["probability"] for x in goal_models)
+    goal_mean=sum(x["probability"] for x in goal_models)/3
+    markets=[{"market":"Goals","status":"available","line":2.5,"expected":round(r.expected_home_goals+r.expected_away_goals,2),"models":goal_models,"disagreement":round(spread,4),"narrative":f"The models average {goal_mean*100:.1f}% for Over 2.5 goals. "+("Their agreement supports the signal." if spread<.12 else "Their disagreement challenges the signal; reduce confidence or pass.")}]
     corners=_num(m,"corners_potential",-1)
     if corners>=0:
         empirical=_rate(m,"corners_o85_potential",.5) if m.get("corners_o85_potential") not in (None,-1) else None
@@ -55,7 +62,7 @@ def _market_breakdown(m,r):
     else:
         markets.extend({"market":x,"status":"insufficient_data","reason":"No pre-match corner history supplied"} for x in ("Corners","1H corners","2H corners"))
     for name in ("1H throw-ins","2H throw-ins"):
-        markets.append({"market":name,"status":"insufficient_data","reason":"FootyStats supplied no pre-match throw-in history or market price"})
+        markets.append({"market":name,"status":"insufficient_data","reason":"FootyStats supplied no pre-match throw-in history or market price","narrative":"No responsible forecast is possible from the available pre-match feed. The model rejects this market rather than substituting an unsupported assumption."})
     return markets
 
 async def next_48h_tips(client, force=False):
@@ -69,4 +76,4 @@ async def next_48h_tips(client, force=False):
         eligible=[m for m in fixtures.values() if m.get("status")=="incomplete" and now<=datetime.fromtimestamp(int(m.get("date_unix",0)),timezone.utc)<=end]
         tips=[t for m in eligible if (t:=_analyse_fixture(m))]
         tips.sort(key=lambda t:(t["best_tip"]["verdict"]!="VALUE",-t["best_tip"]["expected_value"]))
-        payload={"generated_at":now.isoformat(),"window_end":end.isoformat(),"fixtures_found":len(eligible),"fixtures_analysed":len(tips),"tips":tips}; _cache=(monotonic(),payload); return payload
+        payload={"generated_at":now.isoformat(),"window_end":end.isoformat(),"fixtures_found":len(eligible),"fixtures_analysed":len(tips),"tips":tips}; record_forecasts(tips,now.isoformat()); _cache=(monotonic(),payload); return payload

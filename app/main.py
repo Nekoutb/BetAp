@@ -9,6 +9,7 @@ from .config import get_settings
 from .footystats import FootyStatsClient
 from .schemas import AnalysisRequest, AnalysisResponse
 from .tips import next_48h_tips
+from .learning import learning_summary
 
 BASE = Path(__file__).resolve().parent
 app = FastAPI(title="BetAp", version="0.1.0", docs_url="/api/docs")
@@ -48,3 +49,7 @@ async def tips_next_48h(refresh: bool = False) -> dict:
         raise HTTPException(status_code=503, detail="FootyStats API is not configured") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="FootyStats API request failed") from exc
+
+@app.get("/api/learning")
+async def model_learning() -> dict:
+    return learning_summary()
