@@ -2,6 +2,8 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from time import monotonic
 from zoneinfo import ZoneInfo
+import numpy as np
+from scipy.stats import poisson
 from .analysis import analyse
 from .footystats import FootyStatsClient
 from .schemas import AnalysisRequest
@@ -29,7 +31,32 @@ def _analyse_fixture(m):
     r=analyse(req)
     if not r.opportunities:return None
     best=r.opportunities[0]
-    return {"match_id":m.get("id"),"competition_id":m.get("competition_id"),"home_team":r.home_team,"away_team":r.away_team,"kickoff":datetime.fromtimestamp(int(m["date_unix"]),timezone.utc).isoformat(),"best_tip":best.model_dump(),"all_markets":[x.model_dump() for x in r.opportunities],"expected_goals":{"home":r.expected_home_goals,"away":r.expected_away_goals},"signals":{"home_ppg":hp,"away_ppg":ap,"btts_potential":btts,"over25_potential":over,"average_goals":avg},"data_points_used":sum(v not in (None,"",-1) for v in m.values())}
+    return {"match_id":m.get("id"),"competition_id":m.get("competition_id"),"home_team":r.home_team,"away_team":r.away_team,"kickoff":datetime.fromtimestamp(int(m["date_unix"]),timezone.utc).isoformat(),"best_tip":best.model_dump(),"all_markets":[x.model_dump() for x in r.opportunities],"model_breakdown":_market_breakdown(m,r),"expected_goals":{"home":r.expected_home_goals,"away":r.expected_away_goals},"signals":{"home_ppg":hp,"away_ppg":ap,"btts_potential":btts,"over25_potential":over,"average_goals":avg},"data_points_used":sum(v not in (None,"",-1) for v in m.values())}
+
+def _forecast_market(name, expected, line, empirical=None, seed=42):
+    poisson_p=float(poisson.sf(int(line),expected))
+    form_p=float(empirical if empirical is not None else 1/(1+np.exp(-(expected-line)*1.15)))
+    rng=np.random.default_rng(seed); rates=rng.gamma(12,expected/12,20000); simulation_p=float(np.mean(rng.poisson(rates)>line))
+    models=[]
+    for model,p in (("Poisson",poisson_p),("Form / empirical",form_p),("Stochastic simulation",simulation_p)):
+        models.append({"model":model,"probability":round(p,4),"outcome":f"Over {line}" if p>=.5 else f"Under {line}"})
+    return {"market":name,"status":"available","line":line,"expected":round(expected,2),"models":models}
+
+def _market_breakdown(m,r):
+    goals=r.model_probabilities
+    goal_models=[]
+    for model,label in (("poisson","Poisson"),("form_regression","Form / empirical"),("stochastic_simulation","Stochastic simulation")):
+        p=goals[model]["over25"]; goal_models.append({"model":label,"probability":p,"outcome":"Over 2.5" if p>=.5 else "Under 2.5"})
+    markets=[{"market":"Goals","status":"available","line":2.5,"expected":round(r.expected_home_goals+r.expected_away_goals,2),"models":goal_models}]
+    corners=_num(m,"corners_potential",-1)
+    if corners>=0:
+        empirical=_rate(m,"corners_o85_potential",.5) if m.get("corners_o85_potential") not in (None,-1) else None
+        markets.extend([_forecast_market("Corners",corners,8.5,empirical,int(m.get("id",42))),_forecast_market("1H corners",corners*.46,4.5,None,int(m.get("id",42))+1),_forecast_market("2H corners",corners*.54,4.5,None,int(m.get("id",42))+2)])
+    else:
+        markets.extend({"market":x,"status":"insufficient_data","reason":"No pre-match corner history supplied"} for x in ("Corners","1H corners","2H corners"))
+    for name in ("1H throw-ins","2H throw-ins"):
+        markets.append({"market":name,"status":"insufficient_data","reason":"FootyStats supplied no pre-match throw-in history or market price"})
+    return markets
 
 async def next_48h_tips(client, force=False):
     global _cache
