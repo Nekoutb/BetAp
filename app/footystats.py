@@ -21,5 +21,16 @@ class FootyStatsClient:
     async def todays_matches(self, timezone: str = "Europe/London") -> dict:
         return await self.get("/todays-matches", timezone=timezone)
 
+    async def matches_by_date(self, date: str, timezone: str = "Europe/London") -> list[dict]:
+        matches: list[dict] = []
+        page = 1
+        while True:
+            payload = await self.get("/todays-matches", timezone=timezone, date=date, page=page)
+            matches.extend(payload.get("data") or [])
+            pager = payload.get("pager") or {}
+            if page >= int(pager.get("max_page") or 1):
+                return matches
+            page += 1
+
     async def match(self, match_id: int) -> dict:
         return await self.get("/match", match_id=match_id)

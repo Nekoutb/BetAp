@@ -8,6 +8,7 @@ from .analysis import analyse
 from .config import get_settings
 from .footystats import FootyStatsClient
 from .schemas import AnalysisRequest, AnalysisResponse
+from .tips import next_48h_tips
 
 BASE = Path(__file__).resolve().parent
 app = FastAPI(title="BetAp", version="0.1.0", docs_url="/api/docs")
@@ -37,4 +38,13 @@ async def fixtures_today() -> dict:
         raise HTTPException(status_code=503, detail="FootyStats API is not configured") from exc
     except httpx.HTTPError as exc:
         # Never return the upstream request URL because it contains the API key.
+        raise HTTPException(status_code=502, detail="FootyStats API request failed") from exc
+
+@app.get("/api/tips/next-48h")
+async def tips_next_48h(refresh: bool = False) -> dict:
+    try:
+        return await next_48h_tips(FootyStatsClient(get_settings()), force=refresh)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="FootyStats API is not configured") from exc
+    except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="FootyStats API request failed") from exc

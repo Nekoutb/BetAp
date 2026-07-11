@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BetAp — Match intelligence</title><link rel="stylesheet" href="/static/styles.css"></head>
+<title>BetAp — Match intelligence</title><link rel="stylesheet" href="/static/styles.css"><link rel="stylesheet" href="/static/tips.css"></head>
 <body><main class="shell">
   <header><div class="brand"><span class="mark">B</span><span>BetAp</span></div><span class="status"><i></i> Analysis engine online</span></header>
   <section class="hero"><p class="eyebrow">STATISTICAL MATCH INTELLIGENCE</p><h1>Find the signal.<br><span>Respect the uncertainty.</span></h1><p>Three independent models turn team metrics and market odds into probability, fair price, and disciplined exposure.</p></section>
+  <section class="feed"><div class="feed-head"><div><p class="eyebrow">LIVE 48-HOUR FORECAST</p><h2>Upcoming model tips</h2><p id="feed-meta">Loading every accessible fixture and market…</p></div><button id="refresh-tips">Refresh data</button></div><div id="tips-grid"><div class="loading-card">Running the ensemble across upcoming fixtures…</div></div></section>
   <section class="workspace">
     <form id="analysis-form"><div class="form-head"><div><p class="eyebrow">NEW ANALYSIS</p><h2>Match inputs</h2></div><button type="button" id="demo">Load demo</button></div>
       <div class="teams"><fieldset><legend>Home team</legend><label>Name<input name="home_name" required value="Arsenal"></label><div class="grid"><label>Goals for<input type="number" step=".01" name="home_gf" value="2.1" required></label><label>Goals against<input type="number" step=".01" name="home_ga" value="0.9" required></label><label>Shots on target<input type="number" step=".01" name="home_sot" value="6.2"></label><label>Win rate<input type="number" step=".01" max="1" name="home_wr" value="0.68"></label></div></fieldset>
