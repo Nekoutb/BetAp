@@ -32,7 +32,7 @@ def _analyse_fixture(m):
     r=analyse(req)
     if not r.opportunities:return None
     best=r.opportunities[0]
-    return {"match_id":m.get("id"),"competition_id":m.get("competition_id"),"home_team":r.home_team,"away_team":r.away_team,"kickoff":datetime.fromtimestamp(int(m["date_unix"]),timezone.utc).isoformat(),"best_tip":best.model_dump(),"all_markets":[x.model_dump() for x in r.opportunities],"model_breakdown":_market_breakdown(m,r),"expected_goals":{"home":r.expected_home_goals,"away":r.expected_away_goals},"signals":{"home_ppg":hp,"away_ppg":ap,"btts_potential":btts,"over25_potential":over,"average_goals":avg},"data_points_used":sum(v not in (None,"",-1) for v in m.values())}
+    return {"match_id":m.get("id"),"competition_id":m.get("competition_id"),"home_team":r.home_team,"away_team":r.away_team,"kickoff":datetime.fromtimestamp(int(m["date_unix"]),timezone.utc).isoformat(),"fixture":{"season":m.get("season"),"game_week":m.get("game_week"),"stadium":m.get("stadium_name")},"best_tip":best.model_dump(),"all_markets":[x.model_dump() for x in r.opportunities],"model_breakdown":_market_breakdown(m,r),"expected_goals":{"home":r.expected_home_goals,"away":r.expected_away_goals},"signals":{"home_ppg":hp,"away_ppg":ap,"btts_potential":btts,"over25_potential":over,"average_goals":avg},"data_points_used":sum(v not in (None,"",-1) for v in m.values())}
 
 def _forecast_market(name, expected, line, empirical=None, seed=42):
     poisson_p=float(poisson.sf(int(line),expected))
@@ -75,10 +75,12 @@ async def next_48h_tips(client, force=False):
         await reconcile_completed(client)
         now=datetime.now(timezone.utc); end=now+timedelta(hours=48); london=ZoneInfo("Europe/London")
         dates=sorted({(now+timedelta(days=i)).astimezone(london).date().isoformat() for i in range(3)})
-        batches=await asyncio.gather(*(client.matches_by_date(x) for x in dates))
+        loaded=await asyncio.gather(*(client.matches_by_date(x) for x in dates),client.league_index())
+        batches,league_index=loaded[:-1],loaded[-1]
         fixtures={int(m["id"]):m for b in batches for m in b if m.get("id")}
         eligible=[m for m in fixtures.values() if m.get("status")=="incomplete" and now-timedelta(hours=3)<=datetime.fromtimestamp(int(m.get("date_unix",0)),timezone.utc)<=end]
         tips=[t for m in eligible if (t:=_analyse_fixture(m))]
+        for tip in tips:tip["competition"]=league_index.get(int(tip.get("competition_id") or 0),{"league":f'Competition {tip.get("competition_id")}',"country":"Unknown country","division":None,"season":tip["fixture"].get("season")})
         tips.sort(key=lambda t:(t["best_tip"]["verdict"]!="VALUE",-t["best_tip"]["expected_value"]))
         payload={"generated_at":now.isoformat(),"window_end":end.isoformat(),"fixtures_found":len(eligible),"fixtures_analysed":len(tips),"tips":tips}; record_forecasts(tips,now.isoformat()); _cache=(monotonic(),payload); return payload
 

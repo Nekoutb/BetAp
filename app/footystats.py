@@ -34,3 +34,11 @@ class FootyStatsClient:
 
     async def match(self, match_id: int) -> dict:
         return await self.get("/match", match_id=match_id)
+
+    async def league_index(self) -> dict[int, dict]:
+        payload=await self.get("/league-list",chosen_leagues_only="true")
+        index={}
+        for league in payload.get("data") or []:
+            for season in league.get("season") or []:
+                index[int(season["id"])]={"league":league.get("league_name") or league.get("name") or "Unknown competition","country":league.get("country") or "Unknown country","division":league.get("division"),"season":season.get("year")}
+        return index

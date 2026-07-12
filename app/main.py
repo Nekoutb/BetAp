@@ -56,7 +56,7 @@ async def model_learning() -> dict:
 
 @app.get("/game/{match_id}",include_in_schema=False)
 async def game_page(match_id:int) -> FileResponse:
-    return FileResponse(BASE / "static" / "game.html")
+    return FileResponse(BASE / "static" / "game2.html")
 
 @app.get("/api/game/{match_id}")
 async def game_detail(match_id:int) -> dict:
