@@ -82,6 +82,10 @@ async def next_48h_tips(client, force=False):
         tips.sort(key=lambda t:(t["best_tip"]["verdict"]!="VALUE",-t["best_tip"]["expected_value"]))
         payload={"generated_at":now.isoformat(),"window_end":end.isoformat(),"fixtures_found":len(eligible),"fixtures_analysed":len(tips),"tips":tips}; record_forecasts(tips,now.isoformat()); _cache=(monotonic(),payload); return payload
 
+async def game_analysis(client,match_id):
+    payload=await next_48h_tips(client)
+    return next((tip for tip in payload["tips"] if int(tip["match_id"])==int(match_id)),None)
+
 async def reconcile_completed(client):
     for match_id,_ in pending_for_reconciliation():
         try:

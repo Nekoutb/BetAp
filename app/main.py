@@ -8,8 +8,8 @@ from .analysis import analyse
 from .config import get_settings
 from .footystats import FootyStatsClient
 from .schemas import AnalysisRequest, AnalysisResponse
-from .tips import next_48h_tips
-from .learning import learning_summary
+from .tips import next_48h_tips,game_analysis
+from .learning import learning_summary,forecast_history
 
 BASE = Path(__file__).resolve().parent
 app = FastAPI(title="BetAp", version="0.1.0", docs_url="/api/docs")
@@ -53,3 +53,13 @@ async def tips_next_48h(refresh: bool = False) -> dict:
 @app.get("/api/learning")
 async def model_learning() -> dict:
     return learning_summary()
+
+@app.get("/game/{match_id}",include_in_schema=False)
+async def game_page(match_id:int) -> FileResponse:
+    return FileResponse(BASE / "static" / "game.html")
+
+@app.get("/api/game/{match_id}")
+async def game_detail(match_id:int) -> dict:
+    tip=await game_analysis(FootyStatsClient(get_settings()),match_id)
+    if not tip:raise HTTPException(status_code=404,detail="Game analysis not found in the current 48-hour window")
+    return {"analysis":tip,"history":forecast_history(match_id),"learning":learning_summary()}

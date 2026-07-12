@@ -31,6 +31,11 @@ def learning_summary():
 def pending_for_reconciliation(limit=12):
     with _db() as db:return db.execute("SELECT match_id,forecast_json FROM forecasts WHERE status='pending' AND datetime(kickoff)<datetime('now','-90 minutes') LIMIT ?",(limit,)).fetchall()
 
+def forecast_history(match_id):
+    with _db() as db:
+        row=db.execute("SELECT generated_at,status,result_json FROM forecasts WHERE match_id=?",(match_id,)).fetchone()
+    return {"generated_at":row[0],"status":row[1],"actual_result":json.loads(row[2]) if row[2] else None} if row else None
+
 def resolve_forecast(match_id,match):
     with _db() as db:
         row=db.execute("SELECT forecast_json FROM forecasts WHERE match_id=?",(match_id,)).fetchone()
